@@ -22,34 +22,36 @@ from ddd_utils import *
 
 # COGNATA images
 # ============
-annotation_file = '/home/itamar/Documents/Cognata/Test Track: animals for IG/coco_converted_gt.json'
+annotation_file = '/home/imagry/offline_data/cognata/old_before_080523/645a086a4dac90003059f850/coco_converted_gt.json'
 
-id = 3333
+id = 1366
 id = str(id).zfill(10)
-image_path = '/home/itamar/Documents/Cognata/Test Track: animals for IG/CognataCamera_jpg/'+id+'.jpg'
+image_path = '/home/imagry/offline_data/cognata/old_before_080523/645a086a4dac90003059f850/FrontCam01_jpg/'+id+'.jpg'
 sample_origin = 'cognata'
 new_size = (1080,1920)
-output_path = '/home/itamar/Documents/Cognata/Test Track: animals for IG/'
+new_size = (288,1024)
+output_path = '/home/imagry/offline_data/cognata/old_before_080523/645a086a4dac90003059f850/annotations/'
 
 number_of_wanted_images = 1000
+whole_directory = False
 
 
 # ZED images
 # ============
-# annotation_file = '/home/imagry/offline_data/first_train_data/192_3d_asu_train.json'
-# image_path = '/home/imagry/offline_data/first_train_data/1636275525.278687.jpeg'
+# annotation_file = '/home/imagry/offline_data/2023-01-05_full_model_2619bfb_exp_BIASED/192_3d_asu_biased_unbiased_COMBINED.json'
+# image_path = '/home/imagry/offline_data/2023-01-05_full_model_2619bfb_exp/1553103923.019646.jpeg'
 # sample_origin = 'zed'
-# output_path = '/home/imagry/offline_data/first_train_data/'
+# output_path = '/home/imagry/offline_data/2023-01-05_full_model_2619bfb_exp_BIASED/'
 # new_size = (720,1280)
 
 
 # ZED images - SHEBA
 # ============
-# annotation_file = '/home/imagry/offline_data/sheba_trips/entron_train.json'
-# image_path = '/home/imagry/offline_data/sheba_trips/images/2023-03-07T12_23_31/3d_images/2/left/1678184882.024060.jpeg'
-# sample_origin = 'zed'
-# output_path = '/home/imagry/offline_data/sheba_trips/'
-# new_size = (1080,1920)
+annotation_file = '/home/imagry/offline_data/sheba_trips/zed3000_entron2057/zed3000_entron2057_val.json'
+image_path = '/home/imagry/offline_data/2023-01-05_full_model_2619bfb_exp/1598917495.907449.jpeg'
+sample_origin = 'sheba'
+output_path = '/home/itamar/Desktop'
+new_size = (1080,1920)
 
 
 
@@ -154,13 +156,14 @@ def exctract_3d_from_info(image, bird_view, key, val,cam_idx, input_w, input_h, 
                 #     cx_3d,cy_3d = fov_project_to_image_without_calib(center_3d, np.deg2rad(85), input_w = input_w, input_h = input_h)[0]
                 #     cv2.circle(image, (int(cx_3d),int(cy_3d)), 0, (70,150,255), 2)
 
+                # NOTE: WRONG! DON'T UNCOMMENT. DONT CORRECTLY OUTSIDE OF FUNCTION
                 # box_3d = compute_box_3d(dims, locations, rotation_y, pitch, roll)
                 # box_2d = fov_project_to_image_without_calib(box_3d, np.deg2rad(85), input_w = input_w, input_h = input_h)
                 # image = draw_box_3d(image, box_2d)
 
                 # Filter far signs
-                if cat_id == 17 and locations[2] > 30:
-                    continue
+                # if cat_id == 17 and locations[2] > 30:
+                #     continue
 
                 # For visualization
                 shifted_locations = locations[0],locations[1],locations[2]
@@ -333,8 +336,10 @@ full_image_path_list = [image_path]
 
 # TO LIST MANY IMAGES IN A DIRECTORY:
 # # -----------------------------------
-# full_image_path_list = sorted(glob.glob('/home/imagry/offline_data/sheba_trips_230404/images/2023-03-02T17_32_30/3d_images/2/left/*.jpeg'))
-# full_image_path_list = full_image_path_list[:number_of_wanted_images]
+if whole_directory:
+    directory = os.path.dirname(image_path)
+    full_image_path_list = sorted(glob.glob(directory+'/*.jpg'))
+    full_image_path_list = full_image_path_list[:number_of_wanted_images]
 
 image_path_list = full_image_path_list
 
@@ -438,21 +443,31 @@ for image_path in image_path_list:
         # IMPORTANT NOTE! all samples provide the location of the object center.
         # zed samples, for some reason, define the y_corners at [0,-h], and cognata needs a definition of [-h/2,h/2]
 
+        # to avoid drawing issues where bbox is partially unseen, we clip the depth
+        for vertex in box_3d:
+            # print(vertex)
+            if vertex[2] < 0:
+                vertex[2] = 0.001
+            # print(vertex)
 
         # FOR IMAGRY SAMPLES:
         if sample_origin == 'zed':
             box_2d = fov_project_to_image_without_calib(box_3d, image_fov, input_w = new_size[1], input_h = new_size[0])
+        elif sample_origin == 'sheba':
+            box_2d = fov_project_to_image_without_calib(box_3d, np.deg2rad(image_fov), input_w = new_size[1], input_h = new_size[0])            
         else:
             # box_2d = fov_project_to_image_without_calib(box_3d, image_fov,
             #                                             input_w = new_size[1], input_h = new_size[0])
             box_2d = project_to_image(box_3d, calib.transpose(1,0))
 
-        # if cat_id != 1:
+        # if cat_id != 8:
         #     continue
 
         # cv2.putText(image, f'{box_2d[0][0]:.2f}', TL_values, font, 0.4,(0,0,255),1,cv2.LINE_AA)
+        # print(f'\n{box_3d = }')
         # DRAW PROJECTED BOX
-        # print(box_2d)
+        # print(f'\n{box_2d = }')
+        cv2.rectangle(image,(int(coco_bbox[0]),int(coco_bbox[1])),(int(coco_bbox[0])+ int(coco_bbox[2]),int(coco_bbox[1]) + int(coco_bbox[3])),(20,255,255), 2)
         image = draw_box_3d(image, box_2d)
 
     cv2.putText(image,'ANNOTATION',(50,50), font, 0.5,(0,0,255),1,cv2.LINE_AA)
