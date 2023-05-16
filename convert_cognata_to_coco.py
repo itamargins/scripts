@@ -23,6 +23,7 @@ cognata_class_conversion = {
     'Cars':                                     {'imagry_name': 'car',                       'imagry_id': 3},
 
     'Motorcycle':                               {'imagry_name': 'motorbike',                 'imagry_id': 4},
+    'Delivery_Bike':                            {'imagry_name': 'motorbike',                 'imagry_id': 4},
 
     'Cones':                                    {'imagry_name': 'cone',                      'imagry_id': 5},
     'Cone':                                     {'imagry_name': 'cone',                      'imagry_id': 5},
@@ -58,6 +59,7 @@ cognata_class_conversion = {
 
     'Fence':                                    {'imagry_name': 'fence',                     'imagry_id': 16},
     'Pole':                                     {'imagry_name': 'fence',                     'imagry_id': 16},
+    'PoleElectricLight':                        {'imagry_name': 'fence',                     'imagry_id': 16},
     'Barricades':                               {'imagry_name': 'fence',                     'imagry_id': 16},
     'Barrier':                                  {'imagry_name': 'fence',                     'imagry_id': 16},
     # TODO - is this right?
@@ -71,9 +73,26 @@ cognata_class_conversion = {
     'TrafficSign':                              {'imagry_name': 'signs',                     'imagry_id': 18}
 }
 
+
 # %%
 # helper functions
 # ----------------------------------------------------------------------
+
+
+def list_uknown_appearing_classes(id_list):
+    uknown_appearing_classes = set()
+    objects_file = os.path.join(cognata_data_dir,'objects.csv')
+    with open(objects_file,'r') as objects_file:
+        objects = pd.read_csv(objects_file)
+    for id in id_list:
+        uknown_appearing_classes.add((objects[objects['id']==id]['semanticType.Label']).values[0])
+    return uknown_appearing_classes
+
+def sort_error_dict_for_print(error_dict):
+    sorted_error_dict = {}
+    for (k,v) in error_dict.items():
+        sorted_error_dict[k] = sorted(list(v))
+    return sorted_error_dict
 
 def convert_cognata_class(possible_classes, convert_to):
     cognata_class_details = None
@@ -93,7 +112,6 @@ def convert_cognata_class(possible_classes, convert_to):
     # take desired data attribute
     if cognata_class_details is not None:
         return cognata_class_details.get(str(convert_to))
-    # for unknown classes. #TODO - does the previous line do that anyway?
     return None
 
 
@@ -117,29 +135,34 @@ def get_calibration_info(sensor):
         info = list(map(calibration_data.get, info))
     return info
 
+def create_annotation_id_set():
+    annotation_id_set = set()
+    # annotation_file_list = os.listdir(os.path.join(cognata_data_dir, sensor+'_ann'))
+    camera_ann_list = list(sorted(glob.glob(os.path.join(camera_ann_dir, '*.csv'))))
+    for annotation_file in camera_ann_list:
+        objects_ids = set((pd.read_csv(annotation_file)['object_ID']).values)
+        annotation_id_set.update(objects_ids)
+    return annotation_id_set
+
 def read_objects_file():
+    # read object_ID from all annotations, and then read only these id's from objects.csv
+    annotation_id_set = create_annotation_id_set()
     objects_file = os.path.join(cognata_data_dir,'objects.csv')
     with open(objects_file,'r') as objects_file:
         objects = pd.read_csv(objects_file)
+    filtered_objects = objects[objects['id'].isin(annotation_id_set)]
 
     object_id_to_possible_classes_dictionary = {}
-    for i in range(len(objects)):
-        # TODO - can we use type(brandID) == string?
+    for i in range(len(filtered_objects)):       
+        # can we use type(brandID) == string?
         # ===> apparently not (there are also real objects which don't have brandID. Sumeet needs to answer.
-        # for now, using error_object_id_list at the end to note these objects
-        if(isinstance(objects.iloc[i]['brandID'], str)):
-            possible_classes_list = objects.iloc[i]['brandID'].split('/')
-            # TODO - validate the next command - would checking the broadest category first work?
-            possible_classes_list.append(objects.iloc[i]['semanticType.Label'])
-            object_id_to_possible_classes_dictionary.update( {objects.iloc[i]['instance.Number']:possible_classes_list} )
-    
-    # OLD - keep for backup. #TODO - remove
-    #======================================
-    # ids = objects['id'][179:-1]
-    # data = objects[['roiType', 'roiSubType', 'category1', 'category2', 'category3', 'semanticClass']][179:-1]
-    # data = data.values.flatten().reshape([6,-1]) # 6 has to be changed to the number of possibly relevant columns
-    # dictionary = dict(zip(ids, data.tolist()))
-    #======================================
+        # for now, filtering according to annotated ID's
+        if(isinstance(filtered_objects.iloc[i]['brandID'], str)):
+            possible_classes_list = filtered_objects.iloc[i]['brandID'].split('/')
+            possible_classes_list.append(filtered_objects.iloc[i]['semanticType.Label'])
+        elif math.isnan(filtered_objects.iloc[i]['brandID']):
+            possible_classes_list = [filtered_objects.iloc[i]['semanticType.Label']]
+        object_id_to_possible_classes_dictionary.update( {filtered_objects.iloc[i]['instance.Number']:possible_classes_list} )
 
     return object_id_to_possible_classes_dictionary
 
@@ -199,9 +222,10 @@ ret = {'images': [], 'annotations': [], 'categories': []}
 
 
 ######################### DEBUG
-x = []
+step = []
 # y = [[],[],[]]
 facing_angle = []
+location2 = []
 rot = []
 c_dist = []
 center_cam = []
@@ -219,8 +243,11 @@ annotation_counter = 0
 
 resolution, fov, cam_intrinsics, mounting_position = get_calibration_info(sensor)
 object_id_to_possible_classes_dictionary = read_objects_file()
-# TODO - used for debug, remove
-error_object_id_list = set()
+
+error_dict = {
+    'annotated but no brand_ID' : set(),
+    'unknown class to convert' : set()
+}
 
 # %%
 #########################
@@ -260,15 +287,16 @@ for camera_ann_file in camera_ann_list:
 
         object_id = df['object_ID'][annotation_idx]
         possible_classes = object_id_to_possible_classes_dictionary.get(object_id)
-        cat_id = convert_cognata_class(possible_classes,'imagry_id')
-        # if the object is not known to us or the dictionary, skip its annotation
-        # TODO - is this how we want to handle this case? KEEP FOR DEBUG PURPOSES UNTIL SUBMIT
-        if cat_id is None:
-            print(f'{object_id = }, UNKNOWN OBJECT ---> NOT CONVERTED')
-            error_object_id_list.add(object_id)
-            # exit(0)
+        if possible_classes is None:
+            print(f'{object_id = }, NO BRAND_ID ---> NOT CONVERTED')
+            error_dict['annotated but no brand_ID'].add(object_id)
             continue
-        print(f'{object_id = }, \n{possible_classes = }, \n\
+        cat_id = convert_cognata_class(possible_classes,'imagry_id')
+        if cat_id is None:
+            print(f'{object_id = }, UNKNOWN CLASS TO CONVERT ---> NOT CONVERTED ({possible_classes})')
+            error_dict['unknown class to convert'].add(object_id)
+            continue
+        print(f'{object_id = }, {possible_classes = }, \n\
               converted to: {convert_cognata_class(possible_classes,"imagry_name")}')
 
         # df: width (x), height (y), length (z)
@@ -284,9 +312,6 @@ for camera_ann_file in camera_ann_list:
         location = literal_eval(df['center_cam'][annotation_idx])
         # cognata: y=0 is an object the same height as the camera. positive = down, negative = up
         # CenterNet: y=0 is camera height. positive = up, negative = down
-        # reverse the sign of y value - TODO: wrong! sumeet needs to answer
-        # print(f'{frame_id = }')
-        # print(f'{location[1] = }')
 
         rotation_y = np.deg2rad(literal_eval(df['rotation_cam'][annotation_idx])[1]-90)
         # assert angle in [-pi, pi] interval
@@ -342,7 +367,7 @@ for camera_ann_file in camera_ann_list:
             'bbox': coco_bbox,
             'depth': depth,
             'alpha': alpha,
-            'location': location, # TODO - issue, figure out what cognata means by this (open ticket) - what is 0?
+            'location': location,
             'rotation_y': rotation_y,
             'azimuth_3d': azimuth_3d,
             'azimuth_2d': azimuth_2d,
@@ -352,7 +377,7 @@ for camera_ann_file in camera_ann_list:
             'cy_3d': cy_3d,
             'pitch_angle': 0.0,
             'roll_angle': 0.0,
-            'min_depth':  min_distance, #TODO - bug with min_distance. awaiting response
+            'min_depth':  min_distance,
             'truncated': truncated, # unnecessary
             'occluded': occluded, # unnecessary
             }
@@ -360,18 +385,20 @@ for camera_ann_file in camera_ann_list:
 
 
 ################# DEBUG
-        if(frame_id%500 == 0) and (cat_id == 0):
-            x.append(frame_id)
+        if True:
+        # if(frame_id%500 == 0) and (cat_id == 0):
+            step.append(frame_id)
             # fcam = literal_eval(df["facing_cam"][annotation_idx])
             # for i in range(3):
             #     y[i].append(np.rad2deg(fcam[i]))
             # facing_angle.append(df['facing_angle'][annotation_idx])
+            location2.append(location[2])
             # rot.append((literal_eval(df['rotation_cam'][annotation_idx])[1]))
             # c_dist.append(df['center_distance'][annotation_idx])
             # center_cam.append(literal_eval(df['center_cam'][annotation_idx])[2])
             # centerx_3d.append(cx_3d-(960/2))
             # centery_3d.append(cy_3d-(540/2))
-            az_3d.append(azimuth_3d)
+            # az_3d.append(azimuth_3d)
             # az_2d.append(azimuth_2d)
             # manual_az.append(np.rad2deg(np.arctan(location[0]/location[2])))
 ################# DEBUG
@@ -404,16 +431,17 @@ for cat in cognata_class_conversion.keys():
 ######################### DEBUG
 import matplotlib.pyplot as plt
 # for i in range(3):
-#     plt.plot(x,y[i], label=f'facing_cam[{i}]')
-# plt.plot(x, facing_angle, label='facing_angle')
-# plt.plot(x,rot, label='rotation_cam[1]')
-# plt.plot(x, center_cam, label='center_cam')
-# plt.plot(x, c_dist, label='center_dist')
-# plt.plot(x, centerx_3d, label='centerx_3d')
-# plt.plot(x, centery_3d, label='centery_3d')
-# plt.plot(x, az_3d, label='az_3d')
-# # plt.plot(x, az_2d, label='az_2d')
-# # plt.plot(x, manual_az, label='manual_az')
+#     plt.plot(step,y[i], label=f'facing_cam[{i}]')
+# plt.plot(step, facing_angle, label='facing_angle')
+# plt.plot(step, location2, label='location[2]')
+# plt.plot(step,rot, label='rotation_cam[1]')
+# plt.plot(step, center_cam, label='center_cam')
+# plt.plot(step, c_dist, label='center_dist')
+# plt.plot(step, centerx_3d, label='centerx_3d')
+# plt.plot(step, centery_3d, label='centery_3d')
+# plt.plot(step, az_3d, label='az_3d')
+# # plt.plot(step, az_2d, label='az_2d')
+# # plt.plot(step, manual_az, label='manual_az')
 # plt.legend()
 # plt.show()
 ######################### DEBUG
@@ -425,8 +453,13 @@ import matplotlib.pyplot as plt
 # ----------------------------------------------------------------------
 print("# images: ", len(ret['images']))
 print("# annotations: ", len(ret['annotations']))
-print(f'ERROR OBJECT ID LIST: ===> {error_object_id_list} <===')
-# json.dump(ret, open(out_path, 'w'))
+
+sorted_error_dict = sort_error_dict_for_print(error_dict)
+print(f'ERROR OBJECT ID LIST: ===> {sorted_error_dict} <===')
+
+uknown_appearing_classes = list_uknown_appearing_classes(sorted_error_dict['unknown class to convert'])
+print(f'{uknown_appearing_classes = }')
+
 json_object = json.dumps(ret, indent=4)
 with open(out_path, "w") as outfile:
     outfile.write(json_object)
