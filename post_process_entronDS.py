@@ -5,10 +5,11 @@ import numpy as np
 
 ###############################################################
 
-annotation_file_path = '/home/itamar/Desktop/temp/entron_train.json'
-image_target_path = '/home/itamar/Desktop/temp/'
+annotation_file_path = '/home/imagry/offline_data/sheba_trips/entron4683/entron4683_FULL.json'
+image_target_path = '/home/imagry/offline_data/sheba_trips/images/'
 
-camera_config_set = set()
+from collections import defaultdict
+camera_config_dict = defaultdict(int) # set as keys, count as values
 new_images = 0
 category_list = list(range(1,200))
 full_class_instance_hist = dict.fromkeys(category_list, 0)
@@ -69,7 +70,7 @@ for i, image_data in enumerate(data['images']):
         image_data['fov'] = int(float(image_data['fov']))
     
     # list cameras in dataset - ONLY IF THEY ARE INTs ALREADY!
-    camera_config_set.add(f'{image_data["camera_type"]}_{image_data["fov"]}')
+    camera_config_dict[f'{image_data["camera_type"]}_{image_data["fov"]}'] += 1
 
     # convert annotations' fov from string to num - ARCHIVE (relevant only for image_fov value mismatch)
     #---------------------------------------
@@ -108,6 +109,6 @@ print(f'DONWLOADED {new_images} new images')
 print(15*'*', 'DATASET STATS:', 15*'*')
 print(f'{len(data["images"])} IMAGES')
 print(f'{len(data["annotations"])} OBJECTS')
-print(f'{camera_config_set = }')
+print(f'{camera_config_dict = }')
 print(f'{class_instance_hist = }')
 print(f'{full_class_instance_hist = }')
