@@ -13,27 +13,31 @@ import random
 import torch 
 import imutils
 
+sys.path.append("/opt/imagry/CenterNet/src/lib")
+sys.path.append("/opt/imagry/CenterNet/src/lib/utils")
+
 from ddd_utils import *
+from Constants import * 
 
 
 
 ###########################################################################################
 # USER PARAMETERS
+number_of_wanted_images = 1000
+whole_directory = False
+
 
 # COGNATA images
 # ============
-annotation_file = '/home/imagry/offline_data/cognata/old_before_080523/645a086a4dac90003059f850/coco_converted_gt.json'
+# annotation_file = '/home/imagry/offline_data/cognata/old_before_080523/645a086a4dac90003059f850/coco_converted_gt.json'
 
-id = 1366
-id = str(id).zfill(10)
-image_path = '/home/imagry/offline_data/cognata/old_before_080523/645a086a4dac90003059f850/FrontCam01_jpg/'+id+'.jpg'
-sample_origin = 'cognata'
-new_size = (1080,1920)
-new_size = (288,1024)
-output_path = '/home/imagry/offline_data/cognata/old_before_080523/645a086a4dac90003059f850/annotations/'
-
-number_of_wanted_images = 1000
-whole_directory = False
+# id = 1366
+# id = str(id).zfill(10)
+# image_path = '/home/imagry/offline_data/cognata/old_before_080523/645a086a4dac90003059f850/FrontCam01_jpg/'+id+'.jpg'
+# sample_origin = 'cognata'
+# new_size = (1080,1920)
+# new_size = (288,1024)
+# output_path = '/home/imagry/offline_data/cognata/old_before_080523/645a086a4dac90003059f850/annotations/'
 
 
 # ZED images
@@ -47,12 +51,11 @@ whole_directory = False
 
 # ZED images - SHEBA
 # ============
-annotation_file = '/home/imagry/offline_data/sheba_trips/zed3000_entron2057/zed3000_entron2057_val.json'
-image_path = '/home/imagry/offline_data/2023-01-05_full_model_2619bfb_exp/1598917495.907449.jpeg'
+annotation_file = '/home/imagry/offline_data/sheba_trips/entron7122/entron7122.json'
+image_path = '/home/imagry/offline_data/sheba_trips/images/2023-05-24T12_21_50/3d_images/2/left/1684920317.410075.jpeg'
 sample_origin = 'sheba'
-output_path = '/home/itamar/Desktop'
+output_path = '~/Desktop'
 new_size = (1080,1920)
-
 
 
 # KITTI images
@@ -62,11 +65,6 @@ new_size = (1080,1920)
 # # image_path = '/home/imagry/KITTI/training/image_2/003234.png' # TODO - this sample seems like it has bad annotations!
 # sample_origin = 'kitti'
 # output_path = '/home/imagry/KITTI/'
-
-
-###########################################################################################
-
-
 
 
 #*********************************************************************************************************************************************************
@@ -156,7 +154,7 @@ def exctract_3d_from_info(image, bird_view, key, val,cam_idx, input_w, input_h, 
                 #     cx_3d,cy_3d = fov_project_to_image_without_calib(center_3d, np.deg2rad(85), input_w = input_w, input_h = input_h)[0]
                 #     cv2.circle(image, (int(cx_3d),int(cy_3d)), 0, (70,150,255), 2)
 
-                # NOTE: WRONG! DON'T UNCOMMENT. DONT CORRECTLY OUTSIDE OF FUNCTION
+                # NOTE: WRONG! DON'T UNCOMMENT. DONE CORRECTLY OUTSIDE OF FUNCTION
                 # box_3d = compute_box_3d(dims, locations, rotation_y, pitch, roll)
                 # box_2d = fov_project_to_image_without_calib(box_3d, np.deg2rad(85), input_w = input_w, input_h = input_h)
                 # image = draw_box_3d(image, box_2d)
@@ -394,6 +392,10 @@ for image_path in image_path_list:
         pitch = ann['pitch_angle']
         roll = ann['roll_angle']
         cat_id = ann['category_id']
+        if ann['category_id'] in classes_map:
+            cat_id = classes_map[ann['category_id']]
+        else:
+            continue
         image_fov = ann['image_fov']
         
         # truncated = ann['truncated']
@@ -467,7 +469,10 @@ for image_path in image_path_list:
         # print(f'\n{box_3d = }')
         # DRAW PROJECTED BOX
         # print(f'\n{box_2d = }')
-        cv2.rectangle(image,(int(coco_bbox[0]),int(coco_bbox[1])),(int(coco_bbox[0])+ int(coco_bbox[2]),int(coco_bbox[1]) + int(coco_bbox[3])),(20,255,255), 2)
+        cv2.rectangle(image,(int(coco_bbox[0]),int(coco_bbox[1])),
+                      (int(coco_bbox[0])+ int(coco_bbox[2]),int(coco_bbox[1]) + int(coco_bbox[3])), 
+                    colorz[cat_id-1],
+                      2)
         image = draw_box_3d(image, box_2d)
 
     cv2.putText(image,'ANNOTATION',(50,50), font, 0.5,(0,0,255),1,cv2.LINE_AA)
@@ -480,8 +485,8 @@ for image_path in image_path_list:
 
     bird_view_resized = imutils.resize(bird_view, height=np.shape(image)[0])
     catted = np.concatenate((image, bird_view_resized),axis=1)
-    cv2.imshow('CATTED',catted)
-    cv2.waitKey()
+    plt.imshow(catted[:,:,::-1])
+    plt.show()
 
     name,ext = os.path.splitext(os.path.basename(image_name))
     cv2.imwrite(os.path.join(output_path ,name)+'_annotation'+ext, catted)
