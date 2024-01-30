@@ -5,14 +5,12 @@ import numpy as np
 
 ###############################################################
 
-annotation_file_path = '/home/imagry/offline_data/sheba_trips/entron4683/entron4683_FULL.json'
+annotation_file_path = '/home/imagry/offline_data/sheba_trips/entron8311/entron8311.json'
 image_target_path = '/home/imagry/offline_data/sheba_trips/images/'
 
 from collections import defaultdict
 camera_config_dict = defaultdict(int) # set as keys, count as values
 new_images = 0
-category_list = list(range(1,200))
-full_class_instance_hist = dict.fromkeys(category_list, 0)
 
 user_permission_changeImagePaths = input("CHANGE IMAGES FILE NAME? (y/n): ")
 user_permission_downloadImages = input("DOWNLOAD NEW IMAGES FROM CLUSTER? (y/n): ")
@@ -24,6 +22,8 @@ user_permission_annotationsFov2rad = input("CONVERT ANNOTATIONS image_fov FROM S
 with open(annotation_file_path,'r') as annotation_file:
     data = json.load(annotation_file)
 
+category_list = list(range(1,len(data['categories'])))
+full_class_instance_hist = dict.fromkeys(category_list, 0)
 
 def image_to_annotation_indices(image_id):
     annotations_indices = []
@@ -55,7 +55,7 @@ for i, image_data in enumerate(data['images']):
         
         else:
             os.system(cmd)
-            print('DOWNLOADING')
+            print(10*"*",'***DOWNLOADING***',10*"*")
             new_images += 1
 
     # change image file path in json - ONLY AFTER DOWNLOADING!
@@ -88,6 +88,8 @@ for i,ann_data in enumerate(data['annotations']):
     # convert annotations' fov from string to num
     # ---------------------------------------
     if user_permission_annotationsFov2rad == 'y':
+        # TODO - add a safety mechanism: if fov is already in rads, don't transform again!
+        # (idea:  int(float(ann_data['image_fov'])) != float(ann_data['image_fov']) )
         ann_data['image_fov'] = int(float(ann_data['image_fov']))
         ann_data['image_fov'] = np.deg2rad(ann_data['image_fov'])
     
