@@ -29,4 +29,4 @@ aws s3 cp s3://depth-annotation/${vehicle_id}/${trip}.tar.gz . && tar -xf "$trip
  
 # Download Depth annotation
 
-aws s3 cp s3://depth-annotation/${trip}.tar.gz . && tar -xf "$trip.tar.gz" && rm "$trip.tar.gz
+# aws s3 cp s3://depth-annotation/${trip}.tar.gz . && tar -xf "$trip.tar.gz" && rm "$trip.tar.gz

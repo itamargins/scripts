@@ -1,7 +1,8 @@
+import math
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.optim.lr_scheduler import OneCycleLR
+from torch.optim.lr_scheduler import OneCycleLR, SequentialLR, ExponentialLR, CyclicLR, CosineAnnealingWarmRestarts,ChainedScheduler
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -20,15 +21,40 @@ class SimpleNN(nn.Module):
 # Step 2: Define a learning rate scheduler using OneCycleLR
 def get_optimizer_and_scheduler(model, max_lr, num_epochs, momentum=0.9, weight_decay=1e-5):
     optimizer = optim.SGD(model.parameters(), lr=max_lr, momentum=momentum, weight_decay=weight_decay)
-    scheduler = OneCycleLR(
+    scheduler_oneCycle = OneCycleLR(
         optimizer,
-        max_lr=5e-6,
-        epochs=num_epochs,
+        max_lr=5e-3,
+        epochs=int(num_epochs/4),
+        last_epoch=int(num_epochs/4),
         steps_per_epoch=1,
         div_factor=25,
         final_div_factor=10000,
         pct_start = 0.1
     )
+    scheduler_cawr = CosineAnnealingWarmRestarts(
+        optimizer,
+        T_0 = 1000,
+        T_mult=1,
+        verbose=True
+    )
+
+
+    schedulers = [scheduler_oneCycle,
+                    scheduler_cawr]
+                    # scheduler_oneCycle,
+                    # scheduler_oneCycle,
+                    # scheduler_oneCycle,
+                    # scheduler_oneCycle,
+                    # scheduler_oneCycle]
+    
+    # scheduler = SequentialLR(
+    #     optimizer,
+    #     schedulers = schedulers,
+    #     milestones = [(int(num_epochs/len(schedulers)))*i for i in range(1,len(schedulers))],
+    #     verbose=True
+    # )
+    scheduler = scheduler_oneCycle
+
     return optimizer, scheduler
 
 # Step 3: Run "empty" epochs to upate the learning rate at each step
@@ -71,7 +97,7 @@ if __name__ == '__main__':
     model = SimpleNN()
     max_lr = 0.1  # Set your desired max learning rate
     # total_steps = 1000  # Set the total number of training steps
-    num_epochs = 300
+    num_epochs = 100
     optimizer, scheduler = get_optimizer_and_scheduler(model, max_lr,num_epochs)
 
     # Run empty epochs to update the learning rate at each step
